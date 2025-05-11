@@ -25,6 +25,7 @@
                     <td>{{ $product->price }} €</td>
                     <td>
                         <a href="{{ route('products.show', $product) }}" class="btn btn-info">Voir</a>
+                        
                         <a href="{{ route('products.edit', $product) }}" class="btn btn-warning">Modifier</a>
                         <form action="{{ route('products.destroy', $product) }}" method="POST" style="display:inline;">
                             @csrf

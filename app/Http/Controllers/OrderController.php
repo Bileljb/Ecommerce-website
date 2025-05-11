@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Notifications\OrderConfirmation;
+use App\Notifications\NewOrderNotification;
+use App\Models\User;
 
 class OrderController extends Controller
 {
@@ -16,19 +19,30 @@ class OrderController extends Controller
             return redirect()->route('cart.index')->with('error', 'Le panier est vide');
         }
 
-        // Calcul du total correct
-        $total = 0;
+        // Calculate subtotal
+        $subtotal = 0;
         foreach ($cart as $item) {
-            $total += $item['price'] * $item['quantity'];
+            $subtotal += $item['price'] * $item['quantity'];
         }
 
-        // Création de la commande
+        // Apply coupon discount if exists
+        $discount = 0;
+        if (session('applied_coupon')) {
+            $discount = session('applied_coupon')->calculateDiscount($subtotal);
+        }
+
+        // Calculate final total
+        $total = $subtotal - $discount;
+
+        // Create the order
         $order = Order::create([
             'user_id' => auth()->id(),
             'total_price' => $total,
+            'discount_amount' => $discount,
+            'status' => 'completed'
         ]);
 
-        // Insertion des articles de commande
+        // Insert order items
         foreach ($cart as $id => $details) {
             OrderItem::create([
                 'order_id' => $order->id,
@@ -38,8 +52,17 @@ class OrderController extends Controller
             ]);
         }
 
-        // Vider le panier
-        session()->forget('cart');
+        // Send notification to customer
+        $order->user->notify(new OrderConfirmation($order));
+
+        // Send notification to all admin users
+        $adminUsers = User::where('is_admin', true)->get();
+        foreach ($adminUsers as $admin) {
+            $admin->notify(new NewOrderNotification($order));
+        }
+
+        // Clear cart and applied coupon
+        session()->forget(['cart', 'applied_coupon']);
 
         return redirect()->route('cart.index')->with('success', 'Commande passée !');
     }
